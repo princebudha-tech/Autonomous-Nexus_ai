@@ -14,14 +14,18 @@ const router: IRouter = Router();
 // In-memory agent state (resets on restart — future: persist to DB)
 const agentRegistry: Record<
   string,
-  { status: string; lastActive: string | null; tasksCompleted: number }
+  { status: string; lastActive: string | null; tasksCompleted: number; description: string }
 > = {
-  Planner: { status: "idle", lastActive: null, tasksCompleted: 0 },
-  Coder: { status: "idle", lastActive: null, tasksCompleted: 0 },
-  Memory: { status: "idle", lastActive: null, tasksCompleted: 0 },
-  Sandbox: { status: "idle", lastActive: null, tasksCompleted: 0 },
-  Research: { status: "idle", lastActive: null, tasksCompleted: 0 },
-  Security: { status: "active", lastActive: new Date().toISOString(), tasksCompleted: 0 },
+  Planner:    { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Decomposes complex goals into executable step-by-step plans" },
+  Reasoning:  { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Deep logical reasoning, analysis, and decision-making" },
+  Coder:      { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Generates complete, production-ready code in 15+ languages" },
+  Memory:     { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Manages semantic memory, RAG, and knowledge retrieval" },
+  Vision:     { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Image analysis, OCR, document understanding, screen reading" },
+  Research:   { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Deep research, knowledge synthesis, and information gathering" },
+  Automation: { status: "idle",   lastActive: null, tasksCompleted: 0, description: "File system ops, desktop automation, and workflow execution" },
+  Sandbox:    { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Isolated code execution environment with security guardrails" },
+  Browser:    { status: "idle",   lastActive: null, tasksCompleted: 0, description: "Web automation, form filling, and data extraction" },
+  Security:   { status: "active", lastActive: new Date().toISOString(), tasksCompleted: 0, description: "Guardrail enforcement, threat detection, and audit logging" },
 };
 
 export function markAgentActive(name: string): void {
@@ -45,8 +49,9 @@ router.get("/nexus/agents/status", async (_req, res): Promise<void> => {
     status: state.status,
     lastActive: state.lastActive,
     tasksCompleted: state.tasksCompleted,
+    description: state.description,
   }));
-  res.json(GetAgentStatusResponse.parse(statuses));
+  res.json(statuses);
 });
 
 // POST /nexus/agents/plan — Planner Agent uses Claude to decompose task

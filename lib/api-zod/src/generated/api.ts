@@ -272,3 +272,325 @@ export const GetRecentLogsResponseItem = zod.object({
 export const GetRecentLogsResponse = zod.array(GetRecentLogsResponseItem)
 
 
+/**
+ * @summary Analyze image via Vision Agent (OCR, detection, description)
+ */
+export const AnalyzeVisionBody = zod.object({
+  "imageBase64": zod.string(),
+  "mimeType": zod.string().optional(),
+  "prompt": zod.string().optional(),
+  "mode": zod.string().optional()
+})
+
+export const AnalyzeVisionResponse = zod.object({
+  "id": zod.string(),
+  "description": zod.string(),
+  "objects": zod.array(zod.string()),
+  "extractedText": zod.string().nullable(),
+  "confidence": zod.number(),
+  "insights": zod.string(),
+  "mode": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get recent vision analysis history
+ */
+export const GetVisionHistoryResponseItem = zod.object({
+  "id": zod.string(),
+  "prompt": zod.string(),
+  "description": zod.string(),
+  "objects": zod.array(zod.string()),
+  "confidence": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const GetVisionHistoryResponse = zod.array(GetVisionHistoryResponseItem)
+
+
+/**
+ * @summary Build a complete project from natural language (SSE stream)
+ */
+export const BuildCodeBody = zod.object({
+  "requirement": zod.string(),
+  "language": zod.string().optional(),
+  "framework": zod.string().optional(),
+  "projectName": zod.string().optional(),
+  "style": zod.string().optional()
+})
+
+export const BuildCodeResponse = zod.unknown()
+
+
+/**
+ * @summary List coding sessions
+ */
+export const ListCodingSessionsResponseItem = zod.object({
+  "id": zod.string(),
+  "requirement": zod.string(),
+  "projectName": zod.string(),
+  "framework": zod.string(),
+  "language": zod.string(),
+  "status": zod.string(),
+  "totalFiles": zod.number(),
+  "summary": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+export const ListCodingSessionsResponse = zod.array(ListCodingSessionsResponseItem)
+
+
+/**
+ * @summary Get a coding session with all generated files
+ */
+export const GetCodingSessionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetCodingSessionResponse = zod.object({
+  "id": zod.string(),
+  "requirement": zod.string(),
+  "projectName": zod.string(),
+  "framework": zod.string(),
+  "language": zod.string(),
+  "files": zod.array(zod.object({
+  "path": zod.string(),
+  "content": zod.string(),
+  "language": zod.string()
+})),
+  "status": zod.string(),
+  "totalFiles": zod.number(),
+  "summary": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Conduct deep research on any topic
+ */
+export const ConductResearchBody = zod.object({
+  "query": zod.string(),
+  "depth": zod.string().optional(),
+  "format": zod.string().optional(),
+  "language": zod.string().optional()
+})
+
+export const ConductResearchResponse = zod.object({
+  "id": zod.string(),
+  "query": zod.string(),
+  "depth": zod.string(),
+  "summary": zod.string(),
+  "keyPoints": zod.array(zod.string()),
+  "sources": zod.array(zod.string()),
+  "technicalDetails": zod.string(),
+  "practicalApplications": zod.string(),
+  "relatedTopics": zod.array(zod.string()),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Run a file system automation operation
+ */
+export const RunFileAutomationBody = zod.object({
+  "operation": zod.string(),
+  "path": zod.string(),
+  "content": zod.string().optional(),
+  "destination": zod.string().optional(),
+  "query": zod.string().optional(),
+  "recursive": zod.boolean().optional()
+})
+
+export const RunFileAutomationResponse = zod.object({
+  "success": zod.boolean(),
+  "output": zod.string(),
+  "data": zod.unknown().nullable()
+})
+
+
+/**
+ * @summary Get NEXUS workspace file tree
+ */
+export const GetWorkspaceResponse = zod.object({
+  "root": zod.string(),
+  "tree": zod.array(zod.unknown())
+})
+
+
+/**
+ * @summary List tasks with optional filters
+ */
+export const ListTasksQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "priority": zod.coerce.string().optional(),
+  "q": zod.coerce.string().optional()
+})
+
+export const ListTasksResponseItem = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "tags": zod.array(zod.string()),
+  "dueDate": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListTasksResponse = zod.array(ListTasksResponseItem)
+
+
+/**
+ * @summary Create a new task
+ */
+export const CreateTaskBody = zod.object({
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "priority": zod.string().optional(),
+  "tags": zod.array(zod.string()).optional(),
+  "dueDate": zod.string().optional()
+})
+
+export const CreateTaskResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "tags": zod.array(zod.string()),
+  "dueDate": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get task statistics
+ */
+export const GetTaskStatsResponse = zod.object({
+  "total": zod.number(),
+  "pending": zod.number(),
+  "in_progress": zod.number(),
+  "completed": zod.number(),
+  "cancelled": zod.number(),
+  "critical": zod.number(),
+  "high": zod.number(),
+  "overdue": zod.number()
+})
+
+
+/**
+ * @summary Update a task
+ */
+export const UpdateTaskParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateTaskBody = zod.object({
+  "title": zod.string().optional(),
+  "description": zod.string().optional(),
+  "status": zod.string().optional(),
+  "priority": zod.string().optional(),
+  "tags": zod.array(zod.string()).optional(),
+  "dueDate": zod.string().optional()
+})
+
+export const UpdateTaskResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "description": zod.string().nullable(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "tags": zod.array(zod.string()),
+  "dueDate": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a task
+ */
+export const DeleteTaskParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteTaskResponse = zod.void()
+
+
+/**
+ * @summary List notifications
+ */
+export const ListNotificationsQueryParams = zod.object({
+  "limit": zod.coerce.number().optional()
+})
+
+export const ListNotificationsResponseItem = zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "title": zod.string(),
+  "message": zod.string(),
+  "read": zod.boolean(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})
+export const ListNotificationsResponse = zod.array(ListNotificationsResponseItem)
+
+
+/**
+ * @summary Create a notification
+ */
+export const CreateNotificationBody = zod.object({
+  "type": zod.string().optional(),
+  "title": zod.string(),
+  "message": zod.string(),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+export const CreateNotificationResponse = zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "title": zod.string(),
+  "message": zod.string(),
+  "read": zod.boolean(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Clear all notifications
+ */
+export const ClearAllNotificationsResponse = zod.void()
+
+
+/**
+ * @summary Dismiss a notification
+ */
+export const DismissNotificationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DismissNotificationResponse = zod.void()
+
+
+/**
+ * @summary Mark notification as read
+ */
+export const MarkNotificationReadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const MarkNotificationReadResponse = zod.object({
+  "id": zod.string(),
+  "type": zod.string(),
+  "title": zod.string(),
+  "message": zod.string(),
+  "read": zod.boolean(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "createdAt": zod.coerce.date()
+})
+
+

@@ -1,15 +1,32 @@
 ---
 name: NEXUS stack decisions
-description: Key architectural decisions for the NEXUS AI OS project that must stay consistent.
+description: Backend architecture, key constraints, and integration decisions for NEXUS AI OS
 ---
 
-## Rules
+## Backend
+- **Runtime**: Node.js + Express 5 (TypeScript, ESM). Do NOT switch to Python FastAPI.
+- **Monorepo**: pnpm workspaces. API server at `artifacts/api-server/`, DB at `lib/db/`, OpenAPI spec at `lib/api-spec/`.
+- **AI**: Anthropic via `@workspace/integrations-anthropic-ai` package (wraps ANTHROPIC_API_KEY). Model: `claude-opus-4-5`.
+- **DB**: PostgreSQL via Drizzle ORM. All tables in `lib/db/src/schema/nexus.ts`. Run `pnpm --filter @workspace/db run push` after schema changes.
+- **Validation**: NO zod in api-server — it's not a dependency. Use plain JS validation (check type, length, enum membership manually). The `@workspace/api-zod` lib has pre-built Zod schemas for original endpoints only.
+- **Codegen law**: All API types and React Query hooks generated from `lib/api-spec/openapi.yaml` by Orval. Run `pnpm --filter @workspace/api-spec run codegen` after spec changes. Never write fetchers by hand.
+- **SSE streaming**: Coding agent uses SSE (`text/event-stream`) — set `X-Accel-Buffering: no` header.
+- **Automation sandbox**: Sandboxed to `nexus-workspace/` dir (auto-created); destructive ops route through pending actions.
 
-- **Backend is Node.js/Express 5** in `artifacts/api-server`. Do NOT switch to Python/FastAPI — it breaks the monorepo.
-- **Anthropic via ANTHROPIC_API_KEY secret directly** — not via Replit AI Integrations proxy (user declined upgrade). Client in `lib/integrations-anthropic-ai/src/client.ts`.
-- **No vector DB** — semantic memory uses Postgres full-text/ilike search in `memory_records` table.
-- **Orval codegen is the only source of API types/hooks** — always regenerate after openapi.yaml changes: `pnpm --filter @workspace/api-spec run codegen`.
-- **DB schema** lives in `lib/db/src/schema/nexus.ts`; push changes with `pnpm --filter @workspace/db run push`.
-- **SSE streaming** for chat — backend streams token-by-token via `text/event-stream`.
+## Routes
+All new routes export a default router and are barrel-exported from `routes/nexus/index.ts`, then mounted in `routes/index.ts`.
 
-**Why:** Replacing the backend would break workspace routing and existing workflows. The user declined the Replit AI Integrations upgrade, so direct key usage is the only working path.
+Current route modules:
+- memory, agents, sandbox, actions, telemetry, logs (original)
+- vision, coding, research, automation, tasks, notifications (added in v3 session)
+
+## Agent Registry
+Agents in `agentRegistry` (agents.ts): Planner, Reasoning, Coder, Memory, Vision, Research, Automation, Sandbox, Browser, Security.
+`markAgentActive(name)` / `markAgentIdle(name)` — only work if name is in registry.
+
+## DB Tables (nexus.ts)
+conversations, messages (original)
+agentPlans, memoryRecords, pendingActions, nexusLogs (original nexus)
+tasks, notifications, visionAnalyses, codingSessions, researchResults, automationLogs (v3 additions)
+
+**Why no zod in api-server**: esbuild cannot resolve `zod` or `zod/v4` at build time since it's not listed in api-server/package.json dependencies. Use plain JS guards instead.

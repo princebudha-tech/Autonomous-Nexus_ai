@@ -8,6 +8,12 @@ import {
   actionsRouter,
   telemetryRouter,
   logsRouter,
+  visionRouter,
+  codingRouter,
+  researchRouter,
+  automationRouter,
+  tasksRouter,
+  notificationsRouter,
 } from "./nexus";
 
 const router: IRouter = Router();
@@ -20,5 +26,11 @@ router.use(sandboxRouter);
 router.use(actionsRouter);
 router.use(telemetryRouter);
 router.use(logsRouter);
+router.use(visionRouter);
+router.use(codingRouter);
+router.use(researchRouter);
+router.use(automationRouter);
+router.use(tasksRouter);
+router.use(notificationsRouter);
 
 export default router;

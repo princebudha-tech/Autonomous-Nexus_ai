@@ -150,12 +150,202 @@ export interface LogEntry {
   metadata: LogEntryMetadata;
 }
 
+export interface VisionInput {
+  imageBase64: string;
+  mimeType?: string;
+  prompt?: string;
+  mode?: string;
+}
+
+export interface VisionAnalysis {
+  id: string;
+  description: string;
+  objects: string[];
+  /** @nullable */
+  extractedText: string | null;
+  confidence: number;
+  insights: string;
+  mode: string;
+  createdAt: string;
+}
+
+export interface VisionHistoryItem {
+  id: string;
+  prompt: string;
+  description: string;
+  objects: string[];
+  confidence: number;
+  createdAt: string;
+}
+
+export interface CodingBuildInput {
+  requirement: string;
+  language?: string;
+  framework?: string;
+  projectName?: string;
+  style?: string;
+}
+
+export interface CodingFile {
+  path: string;
+  content: string;
+  language: string;
+}
+
+export interface CodingSessionSummary {
+  id: string;
+  requirement: string;
+  projectName: string;
+  framework: string;
+  language: string;
+  status: string;
+  totalFiles: number;
+  /** @nullable */
+  summary: string | null;
+  createdAt: string;
+}
+
+export interface CodingSession {
+  id: string;
+  requirement: string;
+  projectName: string;
+  framework: string;
+  language: string;
+  files: CodingFile[];
+  status: string;
+  totalFiles: number;
+  /** @nullable */
+  summary: string | null;
+  createdAt: string;
+}
+
+export interface ResearchInput {
+  query: string;
+  depth?: string;
+  format?: string;
+  language?: string;
+}
+
+export interface ResearchResult {
+  id: string;
+  query: string;
+  depth: string;
+  summary: string;
+  keyPoints: string[];
+  sources: string[];
+  technicalDetails: string;
+  practicalApplications: string;
+  relatedTopics: string[];
+  createdAt: string;
+}
+
+export interface AutomationInput {
+  operation: string;
+  path: string;
+  content?: string;
+  destination?: string;
+  query?: string;
+  recursive?: boolean;
+}
+
+export interface AutomationResult {
+  success: boolean;
+  output: string;
+  data: unknown | null;
+}
+
+export interface AutomationPending {
+  pending: boolean;
+  pendingId: string;
+  message: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  /** @nullable */
+  description: string | null;
+  status: string;
+  priority: string;
+  tags: string[];
+  /** @nullable */
+  dueDate: string | null;
+  /** @nullable */
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskInput {
+  title: string;
+  description?: string;
+  priority?: string;
+  tags?: string[];
+  dueDate?: string;
+}
+
+export interface TaskUpdate {
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: string;
+  tags?: string[];
+  dueDate?: string;
+}
+
+export interface TaskStats {
+  total: number;
+  pending: number;
+  in_progress: number;
+  completed: number;
+  cancelled: number;
+  critical: number;
+  high: number;
+  overdue: number;
+}
+
+export type NotificationMetadata = {[key: string]: unknown};
+
+export interface Notification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  read: boolean;
+  metadata: NotificationMetadata;
+  createdAt: string;
+}
+
+export type NotificationInputMetadata = {[key: string]: unknown};
+
+export interface NotificationInput {
+  type?: string;
+  title: string;
+  message: string;
+  metadata?: NotificationInputMetadata;
+}
+
 export type SearchMemoryParams = {
 q: string;
 limit?: number;
 };
 
 export type GetRecentLogsParams = {
+limit?: number;
+};
+
+export type GetWorkspace200 = {
+  root: string;
+  tree: unknown[];
+};
+
+export type ListTasksParams = {
+status?: string;
+priority?: string;
+q?: string;
+};
+
+export type ListNotificationsParams = {
 limit?: number;
 };
 
