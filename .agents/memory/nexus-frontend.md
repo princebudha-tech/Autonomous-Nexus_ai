@@ -1,23 +1,48 @@
 ---
 name: NEXUS frontend architecture
-description: Frontend structure, key hooks, and design language for the NEXUS UI artifact.
+description: React+Vite frontend structure, components, hooks, and routing for NEXUS AI OS
 ---
 
-## Key hooks
+## Stack
+- React + Vite + TypeScript, Tailwind v4, Framer Motion
+- Router: Wouter (base = `import.meta.env.BASE_URL`)
+- State: TanStack Query (React Query) — hooks from `@workspace/api-client-react` (Orval-generated)
+- API calls: always use `${BASE_URL}api/...` pattern via generated hooks
 
-- `use-voice.ts` — Web Speech API wrapper; SpeechRecognition types are hand-declared (not in TS lib by default). Wake word "Nexus". Supports push-to-talk and continuous mode.
-- `use-language.ts` — EN/NE (Nepali) translations via LangContext provider (wraps App). T type is `Record<keyof typeof translations.en, string>` (not the literal union — avoids TS errors with two language objects).
-- `use-weather.ts` — Open-Meteo free API (no key), falls back to Kathmandu if geolocation denied.
+## Pages (routes in App.tsx)
+- `/` → dashboard.tsx — Arc Reactor HUD, gauges, weather, calendar, agent grid, action queue, logs
+- `/chat` → chat.tsx — SSE streaming chat with TTS
+- `/vision` → vision.tsx — image upload/camera + 6 analysis modes (describe/OCR/detect_ui/document/screen_read/custom)
+- `/research` → research.tsx — deep research with depth/format selectors
+- `/coding` → coding.tsx — "Build This" code generator with SSE stream + file tree viewer
+- `/tasks` → tasks.tsx — full CRUD task manager with stats, filters, priority, tags, due dates
+- `/agents` → agents.tsx
+- `/sandbox` → sandbox.tsx
+- `/memory` → memory.tsx
+- `/settings` → settings.tsx
 
-## HUD components
+## Key Components
+- `components/layout.tsx` — top HUD bar, collapsible sidebar (grouped: Core/AI Agents/Tools/System), mobile overlay sidebar, voice wake-word flash, global particle canvas
+- `components/hud/arc-reactor.tsx` — orbital SVG rings
+- `components/hud/voice-indicator.tsx` — VoiceIndicator + VoiceWaveform
+- `components/hud/particles.tsx` — canvas-based particle system with mouse repulsion + connection lines
+- `components/hud/thinking.tsx` — ThinkingIndicator (scanning rings), ThinkingDots, ThinkingOverlay
+- `components/hud/notifications-center.tsx` — bell dropdown with unread badge, real-time poll at 5s
+- `components/ui/cyber.tsx` — CyberPanel, CyberButton, CyberInput, CyberBadge
 
-- `components/hud/arc-reactor.tsx` — Iron Man orbital SVG rings (ArcReactor + MiniArcRing). Framer Motion rotates each ring independently.
-- `components/hud/voice-indicator.tsx` — VoiceIndicator (compact or full) + VoiceWaveform bar animation. No duplicate `style` props on motion elements.
+## Hooks
+- `use-voice.ts` — Web Speech API, wake word "nexus", lang-aware (en-US / ne-NP)
+- `use-language.ts` — EN/NE translations via LangContext; `useLangContext()` returns `{ t, lang, setLanguage }`
+- `use-weather.ts` — Open-Meteo free API, geolocation-aware, fallback Kathmandu
 
-## Design language
+## Sidebar Nav Groups
+Core: HUD, Comms  
+AI Agents: Vision, Research, Coding, Agents  
+Tools: Sandbox, Tasks, Memory  
+System: Settings
 
-- Always dark, cyberpunk/glassmorphism. Primary: cyan `hsl(190 100% 50%)`. Font: Rajdhani + Space Mono.
-- `cyber-panel`, `cyber-glow`, `cyber-glow-text` utility classes from index.css.
-- Scanlines overlay on root layout.
-
-**Why:** Consistent aesthetic is core to the product. Every new page should use CyberPanel, CyberButton, CyberBadge primitives from `components/ui/cyber.tsx`.
+## Notable Patterns
+- Framer Motion `layoutId="nav-active"` for animated active indicator
+- All query hooks need explicit `queryKey` in options (Orval requirement)
+- SSE in coding.tsx: fetch with `response.body.getReader()`, parse `data: {...}\n\n` lines
+- Vision page: camera via `getUserMedia`, capture to canvas, convert to base64

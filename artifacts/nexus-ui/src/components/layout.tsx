@@ -1,14 +1,18 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import {
   Activity, MessageSquare, Database,
-  Network, Code, Settings, Cpu, Globe
+  Network, Code, Settings, Cpu, Globe,
+  Eye, Brain, CheckSquare, FlaskConical,
+  ChevronLeft, ChevronRight, Menu, X
 } from 'lucide-react';
 import { useGetAgentStatus } from '@workspace/api-client-react';
 import { useLangContext } from '@/hooks/use-language';
 import { useVoice } from '@/hooks/use-voice';
 import { VoiceIndicator } from '@/components/hud/voice-indicator';
+import { NotificationsCenter } from '@/components/hud/notifications-center';
+import { ParticleSystem } from '@/components/hud/particles';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function Clock() {
@@ -17,17 +21,15 @@ function Clock() {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
   const pad = (n: number) => String(n).padStart(2, '0');
-
   return (
-    <div className="font-mono text-primary/80 flex items-center gap-3">
-      <span className="hidden sm:inline text-primary/40 text-xs tracking-widest uppercase">SYS</span>
+    <div className="font-mono text-primary/80 flex items-center gap-2">
+      <span className="hidden sm:inline text-primary/30 text-[10px] tracking-widest uppercase">SYS</span>
       <div className="flex flex-col items-end">
         <span className="cyber-glow-text text-primary font-bold text-sm tracking-widest">
           {pad(time.getHours())}:{pad(time.getMinutes())}:{pad(time.getSeconds())}
         </span>
-        <span className="text-primary/40 text-[9px] tracking-widest hidden sm:block">
+        <span className="text-primary/30 text-[9px] tracking-wider hidden sm:block">
           {time.toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase()}
         </span>
       </div>
@@ -38,48 +40,121 @@ function Clock() {
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { t, lang, setLanguage } = useLangContext();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const { data: agentStatus } = useGetAgentStatus({ query: { refetchInterval: 5000, queryKey: ['agents-status-nav'] } });
-  const [showVoicePanel, setShowVoicePanel] = useState(false);
-
-  const activeAgents = agentStatus?.filter(a => a.status === 'active').length || 0;
+  const activeAgents = agentStatus?.filter((a: any) => a.status === 'active').length || 0;
 
   const voice = useVoice({
     wakeWord: 'nexus',
     lang: lang === 'ne' ? 'ne-NP' : 'en-US',
     ttsEnabled: true,
     onTranscript: (text) => {
-      // Navigate based on voice commands
       const lower = text.toLowerCase();
-      if (lower.includes('chat') || lower.includes('comms') || lower.includes('कुराकानी')) {
-        window.location.hash = '#/chat';
-      } else if (lower.includes('memory') || lower.includes('स्मृति')) {
-        window.location.hash = '#/memory';
-      } else if (lower.includes('agent') || lower.includes('एजेन्ट')) {
-        window.location.hash = '#/agents';
-      } else if (lower.includes('sandbox') || lower.includes('code') || lower.includes('कोड')) {
-        window.location.hash = '#/sandbox';
-      } else if (lower.includes('setting') || lower.includes('सेटिङ')) {
-        window.location.hash = '#/settings';
-      } else if (lower.includes('dashboard') || lower.includes('home') || lower.includes('hud')) {
-        window.location.hash = '#/';
-      }
+      const navigate = (path: string) => {
+        window.location.href = `${import.meta.env.BASE_URL.replace(/\/$/, '')}${path}`;
+      };
+      if (lower.includes('chat') || lower.includes('comms')) navigate('/chat');
+      else if (lower.includes('memory') || lower.includes('स्मृति')) navigate('/memory');
+      else if (lower.includes('agent')) navigate('/agents');
+      else if (lower.includes('sandbox') || lower.includes('code') && !lower.includes('coding')) navigate('/sandbox');
+      else if (lower.includes('vision') || lower.includes('camera')) navigate('/vision');
+      else if (lower.includes('coding') || lower.includes('build')) navigate('/coding');
+      else if (lower.includes('task')) navigate('/tasks');
+      else if (lower.includes('research')) navigate('/research');
+      else if (lower.includes('setting')) navigate('/settings');
+      else if (lower.includes('home') || lower.includes('dashboard') || lower.includes('hud')) navigate('/');
     }
   });
 
   const navItems = [
-    { href: '/', icon: Activity, label: t.hud },
-    { href: '/chat', icon: MessageSquare, label: t.comms },
-    { href: '/memory', icon: Database, label: t.memory },
-    { href: '/agents', icon: Network, label: t.agents },
-    { href: '/sandbox', icon: Code, label: t.sandbox },
-    { href: '/settings', icon: Settings, label: t.settings },
+    { href: '/',         icon: Activity,      label: t.hud,      group: 'core' },
+    { href: '/chat',     icon: MessageSquare, label: t.comms,    group: 'core' },
+    { href: '/vision',   icon: Eye,           label: 'Vision',   group: 'ai' },
+    { href: '/research', icon: Brain,         label: 'Research', group: 'ai' },
+    { href: '/coding',   icon: Code,          label: 'Coding',   group: 'ai' },
+    { href: '/agents',   icon: Network,       label: t.agents,   group: 'ai' },
+    { href: '/sandbox',  icon: FlaskConical,  label: t.sandbox,  group: 'tools' },
+    { href: '/tasks',    icon: CheckSquare,   label: 'Tasks',    group: 'tools' },
+    { href: '/memory',   icon: Database,      label: t.memory,   group: 'tools' },
+    { href: '/settings', icon: Settings,      label: t.settings, group: 'system' },
   ];
 
+  const groups = [
+    { key: 'core',   label: 'Core' },
+    { key: 'ai',     label: 'AI Agents' },
+    { key: 'tools',  label: 'Tools' },
+    { key: 'system', label: 'System' },
+  ];
+
+  const SidebarContent = () => (
+    <>
+      {groups.map(group => {
+        const groupItems = navItems.filter(n => n.group === group.key);
+        return (
+          <div key={group.key}>
+            {!sidebarCollapsed && (
+              <div className="text-[9px] font-mono text-primary/30 px-4 py-1.5 uppercase tracking-widest">
+                {group.label}
+              </div>
+            )}
+            {groupItems.map((item) => {
+              const isActive = location === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileSidebarOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-all duration-200 border-l-2 w-full relative",
+                    sidebarCollapsed ? "justify-center" : "justify-start",
+                    isActive
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-transparent text-primary/40 hover:bg-primary/5 hover:text-primary/80 hover:border-primary/30"
+                  )}
+                >
+                  {isActive && (
+                    <motion.div
+                      className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary shadow-[0_0_8px_rgba(0,212,255,0.8)]"
+                      layoutId="nav-active"
+                      transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                    />
+                  )}
+                  <item.icon className={cn("shrink-0", isActive ? "w-4 h-4" : "w-4 h-4")} />
+                  {!sidebarCollapsed && (
+                    <span className="font-mono text-xs uppercase tracking-wider">{item.label}</span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        );
+      })}
+    </>
+  );
+
   return (
-    <div className="min-h-[100dvh] h-screen bg-background text-foreground flex flex-col scanlines overflow-hidden">
-      {/* Top HUD Bar */}
-      <header className="h-14 border-b border-primary/20 cyber-panel flex items-center justify-between px-4 sm:px-6 z-20 shrink-0">
-        <div className="flex items-center gap-4">
+    <div className="min-h-[100dvh] h-screen bg-background text-foreground flex flex-col overflow-hidden relative">
+      {/* Global particle system */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <ParticleSystem count={40} interactive={false} />
+      </div>
+
+      {/* Scanlines overlay */}
+      <div className="scanlines fixed inset-0 pointer-events-none z-0" />
+
+      {/* ── TOP HUD BAR ── */}
+      <header className="h-14 border-b border-primary/20 cyber-panel flex items-center justify-between px-4 sm:px-6 z-20 shrink-0 relative">
+        <div className="flex items-center gap-3">
+          {/* Mobile menu */}
+          <button
+            onClick={() => setMobileSidebarOpen(p => !p)}
+            className="md:hidden w-8 h-8 border border-primary/20 flex items-center justify-center text-primary/60 hover:text-primary"
+          >
+            {mobileSidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
+
+          {/* Logo */}
           <div className="flex items-center gap-2">
             <motion.div
               animate={{ rotate: [0, 360] }}
@@ -87,32 +162,39 @@ export function Layout({ children }: { children: React.ReactNode }) {
             >
               <Cpu className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </motion.div>
-            <h1 className="text-lg sm:text-xl font-bold tracking-widest text-primary cyber-glow-text uppercase">
-              NEXUS <span className="text-primary/50 text-xs sm:text-sm">OS</span>
-            </h1>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold tracking-[0.2em] text-primary cyber-glow-text uppercase leading-none">
+                NEXUS
+              </h1>
+              <div className="text-[8px] text-primary/40 font-mono tracking-[0.3em] hidden sm:block">AI OPERATING SYSTEM</div>
+            </div>
           </div>
-          <div className="h-4 w-px bg-primary/30 mx-0 sm:mx-2 hidden sm:block" />
-          <div className="hidden sm:flex items-center gap-2 text-xs font-mono uppercase text-primary/70">
-            <span className="relative flex h-2 w-2">
+
+          <div className="h-5 w-px bg-primary/20 mx-1 hidden sm:block" />
+
+          <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono uppercase text-primary/50">
+            <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary"></span>
             </span>
             {t.systemOnline}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Language Toggle */}
+        <div className="flex items-center gap-2">
+          {/* Language toggle */}
           <button
             onClick={() => setLanguage(lang === 'en' ? 'ne' : 'en')}
-            className="flex items-center gap-1.5 px-2 py-1 border border-primary/20 hover:border-primary/50 text-primary/60 hover:text-primary transition-all font-mono text-xs uppercase tracking-wider"
-            title={t.language}
+            className="flex items-center gap-1 px-2 py-1 border border-primary/15 hover:border-primary/40 text-primary/50 hover:text-primary transition-all font-mono text-[10px] uppercase tracking-wider"
           >
             <Globe className="w-3 h-3" />
-            <span className="hidden sm:inline">{lang === 'en' ? 'EN' : 'नेपाली'}</span>
+            <span className="hidden sm:inline">{lang === 'en' ? 'EN' : 'NE'}</span>
           </button>
 
-          {/* Voice Toggle */}
+          {/* Notifications */}
+          <NotificationsCenter />
+
+          {/* Voice */}
           <VoiceIndicator
             state={voice.state}
             wakeWordDetected={voice.wakeWordDetected}
@@ -122,81 +204,89 @@ export function Layout({ children }: { children: React.ReactNode }) {
             compact
           />
 
+          <div className="h-4 w-px bg-primary/20 hidden sm:block" />
           <Clock />
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden relative z-0">
-        {/* Sidebar */}
-        <aside className="w-16 sm:w-48 md:w-56 border-r border-primary/20 cyber-panel flex flex-col items-center sm:items-stretch py-4 sm:py-6 gap-1 shrink-0 z-10">
-          <div className="text-[10px] font-mono text-primary/50 px-4 pb-3 hidden sm:block uppercase tracking-widest border-b border-primary/10 mb-2">
-            {t.modules}
+      <div className="flex flex-1 overflow-hidden relative z-10">
+        {/* ── SIDEBAR — desktop ── */}
+        <motion.aside
+          animate={{ width: sidebarCollapsed ? 52 : 200 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          className="hidden md:flex border-r border-primary/20 bg-background/80 backdrop-blur-sm flex-col py-3 shrink-0 z-10 overflow-hidden relative"
+        >
+          <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden">
+            <SidebarContent />
           </div>
-          {navItems.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link key={item.href} href={item.href} className={cn(
-                "flex items-center justify-center sm:justify-start gap-3 px-0 sm:px-4 py-3 cursor-pointer transition-all duration-200 border-l-2 w-full relative",
-                isActive
-                  ? "border-primary bg-primary/10 text-primary cyber-glow-text"
-                  : "border-transparent text-muted-foreground hover:bg-primary/5 hover:text-primary"
-              )}>
-                {isActive && (
-                  <motion.div
-                    className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary"
-                    layoutId="nav-indicator"
-                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                  />
-                )}
-                <item.icon className="w-5 h-5 shrink-0" />
-                <span className="font-mono text-sm hidden sm:block uppercase tracking-wider">{item.label}</span>
-              </Link>
-            );
-          })}
 
-          <div className="mt-auto px-4 pb-4">
-            <div className="hidden sm:flex flex-col gap-2 font-mono text-[10px] text-primary/50 uppercase border-t border-primary/20 pt-4 mt-4">
-              <div className="flex justify-between">
-                <span>{t.agents}</span>
-                <span className="text-primary">{activeAgents} ACT</span>
-              </div>
-              <div className="flex justify-between">
-                <span>NET</span>
-                <span className="text-emerald-500">{t.secureNet}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>VOICE</span>
-                <span className={voice.enabled ? 'text-primary' : 'text-primary/30'}>
-                  {voice.enabled ? 'ON' : 'OFF'}
-                </span>
-              </div>
-
-              {/* Voice wake word hint */}
-              {!voice.enabled && (
-                <div className="mt-2 text-primary/30 text-[9px] leading-tight">
-                  {t.wakeWord}
+          {/* System stats + collapse */}
+          <div className="border-t border-primary/10 pt-3 px-3 mt-2 shrink-0">
+            {!sidebarCollapsed && (
+              <div className="font-mono text-[9px] text-primary/30 uppercase mb-3 flex flex-col gap-1.5">
+                <div className="flex justify-between">
+                  <span>Agents</span>
+                  <span className={activeAgents > 0 ? 'text-primary' : 'text-primary/30'}>{activeAgents} ACT</span>
                 </div>
-              )}
-            </div>
+                <div className="flex justify-between">
+                  <span>NET</span>
+                  <span className="text-emerald-500">{t.secureNet}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>VOICE</span>
+                  <span className={voice.enabled ? 'text-primary' : 'text-primary/20'}>{voice.enabled ? 'ON' : 'OFF'}</span>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setSidebarCollapsed(p => !p)}
+              className="w-full flex items-center justify-center text-primary/30 hover:text-primary transition-colors py-1"
+            >
+              {sidebarCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
+            </button>
           </div>
-        </aside>
+        </motion.aside>
 
-        {/* Main Content Area */}
-        <main className="flex-1 relative overflow-y-auto overflow-x-hidden p-4 sm:p-6 custom-scrollbar z-0">
+        {/* ── SIDEBAR — mobile overlay ── */}
+        <AnimatePresence>
+          {mobileSidebarOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-background/60 backdrop-blur-sm z-20 md:hidden"
+                onClick={() => setMobileSidebarOpen(false)}
+              />
+              <motion.aside
+                initial={{ x: -220 }}
+                animate={{ x: 0 }}
+                exit={{ x: -220 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                className="fixed left-0 top-14 bottom-0 w-52 border-r border-primary/20 bg-background/95 backdrop-blur-xl flex flex-col py-3 z-30 overflow-y-auto custom-scrollbar md:hidden"
+              >
+                <SidebarContent />
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* ── MAIN CONTENT ── */}
+        <main className="flex-1 relative overflow-y-auto overflow-x-hidden p-4 sm:p-5 custom-scrollbar z-0">
           {children}
         </main>
       </div>
 
-      {/* Wake word global overlay */}
+      {/* Wake word global flash */}
       <AnimatePresence>
         {voice.wakeWordDetected && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-primary/10 border border-primary backdrop-blur-md px-6 py-3 font-mono text-primary text-sm uppercase tracking-widest shadow-[0_0_30px_rgba(0,212,255,0.4)]"
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-primary/10 border border-primary backdrop-blur-md px-6 py-3 font-mono text-primary text-sm uppercase tracking-widest shadow-[0_0_30px_rgba(0,212,255,0.5)]"
           >
-            ⚡ NEXUS — {lang === 'ne' ? 'के गर्नु छ?' : 'How can I help?'}
+            ⚡ {lang === 'ne' ? 'NEXUS सक्रिय — के गर्नु छ?' : 'NEXUS ACTIVATED — How can I help?'}
           </motion.div>
         )}
       </AnimatePresence>
