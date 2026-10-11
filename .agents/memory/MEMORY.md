@@ -1,2 +1,2 @@
-- [NEXUS stack decisions](nexus-stack.md) — Node.js/Express backend (not Python), no vector DB, Anthropic key direct, Orval codegen from openapi.yaml.
+- [NEXUS stack decisions](nexus-stack.md) — FastAPI is additive beside Express; keep its PostgreSQL objects separate from Drizzle-owned tables.
 - [NEXUS frontend architecture](nexus-frontend.md) — React+Vite, Tailwind v4, Framer Motion; HUD in components/hud/, hooks: use-voice, use-language, use-weather.
