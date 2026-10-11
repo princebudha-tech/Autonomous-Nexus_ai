@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking';
+type VoiceMode = 'none' | 'continuous' | 'push-to-talk';
 
 interface UseVoiceOptions {
   onTranscript?: (text: string) => void;
   wakeWord?: string;
   lang?: string;
   ttsEnabled?: boolean;
+  speechRate?: number;
+  speechPitch?: number;
+  feminineVoice?: boolean;
 }
 
-// Web Speech API types (not always in TS lib)
 interface SpeechRecognitionResultItem { transcript: string; confidence: number; }
 interface SpeechRecognitionResult extends Iterable<SpeechRecognitionResultItem> {
   isFinal: boolean;
@@ -26,6 +29,9 @@ interface SpeechRecognitionEvent extends Event {
   results: SpeechRecognitionResultList;
   resultIndex: number;
 }
+interface SpeechRecognitionErrorEvent extends Event {
+  error?: string;
+}
 interface SpeechRecognitionInstance extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
@@ -35,149 +41,319 @@ interface SpeechRecognitionInstance extends EventTarget {
   stop(): void;
   onstart: ((ev: Event) => void) | null;
   onresult: ((ev: SpeechRecognitionEvent) => void) | null;
-  onerror: ((ev: Event) => void) | null;
+  onerror: ((ev: SpeechRecognitionErrorEvent) => void) | null;
   onend: ((ev: Event) => void) | null;
 }
 
 function getSRClass(): (new () => SpeechRecognitionInstance) | null {
+  if (typeof window === 'undefined') return null;
   const w = window as unknown as Record<string, unknown>;
-  return (w['SpeechRecognition'] as (new () => SpeechRecognitionInstance) | undefined)
-    || (w['webkitSpeechRecognition'] as (new () => SpeechRecognitionInstance) | undefined)
+  return (w.SpeechRecognition as (new () => SpeechRecognitionInstance) | undefined)
+    || (w.webkitSpeechRecognition as (new () => SpeechRecognitionInstance) | undefined)
     || null;
 }
 
-export function useVoice({ onTranscript, wakeWord = 'nexus', lang = 'en-US', ttsEnabled = true }: UseVoiceOptions = {}) {
+function storedNumber(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const value = Number(window.localStorage.getItem(key));
+    return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+const feminineVoiceNames = /\b(female|woman|samantha|zira|aria|jenny|ava|sara|susan|karen|moira|tessa)\b/i;
+
+export function useVoice({
+  onTranscript,
+  wakeWord = 'nexus',
+  lang = 'en-US',
+  ttsEnabled = true,
+  speechRate,
+  speechPitch,
+  feminineVoice = true,
+}: UseVoiceOptions = {}) {
   const [state, setVoiceState] = useState<VoiceState>('idle');
   const [transcript, setTranscript] = useState('');
   const [enabled, setEnabled] = useState(false);
   const [wakeWordDetected, setWakeWordDetected] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeWordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recognitionModeRef = useRef<VoiceMode>('none');
+  const retryCountRef = useRef(0);
   const enabledRef = useRef(enabled);
+  const startListeningRef = useRef<() => void>(() => {});
+  const speechTokenRef = useRef(0);
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   enabledRef.current = enabled;
 
-  const supported = !!getSRClass() && 'speechSynthesis' in window;
+  const supported = typeof window !== 'undefined'
+    && !!getSRClass()
+    && 'speechSynthesis' in window;
 
-  const speak = useCallback((text: string, langCode?: string) => {
-    if (!ttsEnabled || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = langCode || lang;
-    utter.rate = 0.95;
-    utter.pitch = 0.85;
-    utter.volume = 0.9;
-    const voices = window.speechSynthesis.getVoices();
-    const pref = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Microsoft')))
-      || voices.find(v => v.lang.startsWith('en'))
-      || voices[0];
-    if (pref) utter.voice = pref;
-    utter.onstart = () => setVoiceState('speaking');
-    utter.onend = () => setVoiceState(enabledRef.current ? 'listening' : 'idle');
-    window.speechSynthesis.speak(utter);
-  }, [ttsEnabled, lang]);
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    restartTimerRef.current = null;
+  }, []);
+
+  const scheduleRestart = useCallback((delay: number) => {
+    if (!enabledRef.current || restartTimerRef.current) return;
+    restartTimerRef.current = setTimeout(() => {
+      restartTimerRef.current = null;
+      if (enabledRef.current) {
+        recognitionModeRef.current = 'continuous';
+        startListeningRef.current();
+      }
+    }, delay);
+  }, []);
 
   const stopListening = useCallback(() => {
-    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    clearRestartTimer();
+    retryCountRef.current = 0;
+    recognitionModeRef.current = 'none';
+    speechTokenRef.current += 1;
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
+      const current = recognitionRef.current;
       recognitionRef.current = null;
+      current.onend = null;
+      current.onerror = null;
+      try { current.stop(); } catch { /* Already stopped by the browser. */ }
     }
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
     setVoiceState('idle');
     setTranscript('');
-  }, []);
+  }, [clearRestartTimer]);
 
   const startListening = useCallback(() => {
     const SRClass = getSRClass();
-    if (!SRClass) return;
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
+    if (!SRClass || !enabledRef.current) {
+      setVoiceState('idle');
+      return;
     }
+    clearRestartTimer();
+    if (recognitionRef.current) {
+      const previous = recognitionRef.current;
+      recognitionRef.current = null;
+      previous.onend = null;
+      previous.onerror = null;
+      try { previous.stop(); } catch { /* The browser may have ended it already. */ }
+    }
+
     const sr = new SRClass();
     sr.continuous = true;
     sr.interimResults = true;
     sr.lang = lang;
     sr.maxAlternatives = 1;
+    recognitionModeRef.current = 'continuous';
 
-    sr.onstart = () => setVoiceState('listening');
-
+    sr.onstart = () => {
+      retryCountRef.current = 0;
+      setVoiceState('listening');
+    };
     sr.onresult = (event: SpeechRecognitionEvent) => {
       const results = Array.from(event.results);
-      const fullTranscript = results.map(r => r[0].transcript).join(' ').trim();
+      const fullTranscript = results.map(result => result[0].transcript).join(' ').trim();
       setTranscript(fullTranscript);
-
       const latest = results[results.length - 1]?.[0]?.transcript?.toLowerCase() || '';
       if (latest.includes(wakeWord.toLowerCase())) {
         setWakeWordDetected(true);
-        setTimeout(() => setWakeWordDetected(false), 3000);
+        if (wakeWordTimerRef.current) clearTimeout(wakeWordTimerRef.current);
+        wakeWordTimerRef.current = setTimeout(() => setWakeWordDetected(false), 3000);
       }
-
-      if (event.results[event.results.length - 1].isFinal) {
+      if (event.results[event.results.length - 1]?.isFinal && fullTranscript.length > 2) {
         setTranscript('');
-        if (fullTranscript.length > 2) {
-          setVoiceState('processing');
-          onTranscript?.(fullTranscript);
-        }
+        setVoiceState('processing');
+        onTranscript?.(fullTranscript);
       }
     };
-
-    sr.onerror = () => {
+    sr.onerror = (event: SpeechRecognitionErrorEvent) => {
       setVoiceState('idle');
-      if (enabledRef.current) {
-        restartTimerRef.current = setTimeout(() => startListening(), 1500);
+      const fatal = ['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event.error || '');
+      if (fatal) {
+        recognitionModeRef.current = 'none';
+        enabledRef.current = false;
+        setEnabled(false);
+        return;
+      }
+      if (enabledRef.current && retryCountRef.current < 4) {
+        retryCountRef.current += 1;
+        scheduleRestart(Math.min(1000 * retryCountRef.current, 4000));
       }
     };
-
     sr.onend = () => {
-      if (enabledRef.current) {
-        restartTimerRef.current = setTimeout(() => startListening(), 500);
-      } else {
+      if (recognitionRef.current === sr) recognitionRef.current = null;
+      if (recognitionModeRef.current === 'continuous' && enabledRef.current) {
+        if (retryCountRef.current < 4) scheduleRestart(600);
+        else setVoiceState('idle');
+      } else if (recognitionModeRef.current !== 'push-to-talk') {
         setVoiceState('idle');
       }
     };
 
     recognitionRef.current = sr;
-    try { sr.start(); } catch (_) {}
-  }, [lang, wakeWord, onTranscript]);
+    try {
+      sr.start();
+    } catch {
+      recognitionRef.current = null;
+      setVoiceState('idle');
+      if (retryCountRef.current < 4) {
+        retryCountRef.current += 1;
+        scheduleRestart(Math.min(1000 * retryCountRef.current, 4000));
+      }
+    }
+  }, [clearRestartTimer, lang, onTranscript, scheduleRestart, wakeWord]);
+  startListeningRef.current = startListening;
+
+  const speak = useCallback((text: string, langCode?: string) => {
+    if (!ttsEnabled || !text.trim() || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const speechLang = langCode || lang;
+    const normalizedLang = speechLang.toLowerCase();
+    const language = normalizedLang.split('-')[0];
+    const voices = window.speechSynthesis.getVoices();
+    voicesRef.current = voices;
+
+    if (recognitionRef.current && recognitionModeRef.current === 'continuous') {
+      const current = recognitionRef.current;
+      recognitionRef.current = null;
+      recognitionModeRef.current = 'none';
+      current.onend = null;
+      current.onerror = null;
+      try { current.stop(); } catch { /* Speech recognition already stopped. */ }
+    }
+
+    speechTokenRef.current += 1;
+    const speechToken = speechTokenRef.current;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = speechLang;
+    utterance.rate = speechRate ?? storedNumber('nexus-voice-rate', 0.98, 0.8, 1.2);
+    utterance.pitch = speechPitch ?? storedNumber('nexus-voice-pitch', 1.05, 0.8, 1.3);
+    utterance.volume = 1;
+
+    const matchingVoices = voices.filter(voice => voice.lang.toLowerCase() === normalizedLang);
+    const sameLanguageVoices = matchingVoices.length > 0
+      ? matchingVoices
+      : voices.filter(voice => voice.lang.toLowerCase().split('-')[0] === language);
+    const preferredVoice = feminineVoice
+      ? sameLanguageVoices.find(voice => feminineVoiceNames.test(voice.name))
+      : undefined;
+    const languageVoice = preferredVoice
+      || sameLanguageVoices.find(voice => voice.default)
+      || sameLanguageVoices[0];
+    if (languageVoice) utterance.voice = languageVoice;
+
+    utterance.onstart = () => {
+      if (speechToken === speechTokenRef.current) setVoiceState('speaking');
+    };
+    utterance.onend = () => {
+      if (speechToken !== speechTokenRef.current) return;
+      if (enabledRef.current) {
+        setVoiceState('listening');
+        scheduleRestart(350);
+      } else {
+        setVoiceState('idle');
+      }
+    };
+    utterance.onerror = () => {
+      if (speechToken === speechTokenRef.current) {
+        setVoiceState(enabledRef.current ? 'idle' : 'idle');
+        if (enabledRef.current) scheduleRestart(500);
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  }, [feminineVoice, lang, scheduleRestart, speechPitch, speechRate, ttsEnabled]);
 
   const toggle = useCallback(() => {
-    setEnabled(prev => {
-      if (prev) stopListening();
-      return !prev;
-    });
+    if (enabledRef.current) {
+      enabledRef.current = false;
+      setEnabled(false);
+      stopListening();
+      return;
+    }
+    retryCountRef.current = 0;
+    enabledRef.current = true;
+    recognitionModeRef.current = 'continuous';
+    setEnabled(true);
   }, [stopListening]);
 
   const pushToTalk = useCallback(() => {
     const SRClass = getSRClass();
-    if (!SRClass) return;
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
+    if (!SRClass) {
+      setVoiceState('idle');
+      return;
     }
+    clearRestartTimer();
+    if (recognitionRef.current) {
+      const previous = recognitionRef.current;
+      recognitionRef.current = null;
+      previous.onend = null;
+      previous.onerror = null;
+      try { previous.stop(); } catch { /* The browser may have ended it already. */ }
+    }
+
     const sr = new SRClass();
     sr.continuous = false;
     sr.interimResults = true;
     sr.lang = lang;
     sr.maxAlternatives = 1;
+    recognitionModeRef.current = 'push-to-talk';
     sr.onstart = () => setVoiceState('listening');
     sr.onresult = (event: SpeechRecognitionEvent) => {
-      const t = Array.from(event.results).map(r => r[0].transcript).join(' ').trim();
-      setTranscript(t);
-      if (event.results[event.results.length - 1].isFinal && t.length > 1) {
+      const text = Array.from(event.results).map(result => result[0].transcript).join(' ').trim();
+      setTranscript(text);
+      if (event.results[event.results.length - 1]?.isFinal && text.length > 1) {
         setTranscript('');
-        onTranscript?.(t);
         setVoiceState('processing');
+        onTranscript?.(text);
       }
     };
-    sr.onend = () => setVoiceState('idle');
-    sr.onerror = () => setVoiceState('idle');
+    sr.onerror = () => {
+      if (recognitionModeRef.current === 'push-to-talk') {
+        recognitionModeRef.current = 'none';
+        setVoiceState('idle');
+        if (enabledRef.current) scheduleRestart(500);
+      }
+    };
+    sr.onend = () => {
+      if (recognitionRef.current === sr) recognitionRef.current = null;
+      if (recognitionModeRef.current === 'push-to-talk') recognitionModeRef.current = 'none';
+      if (enabledRef.current) scheduleRestart(500);
+      else setVoiceState('idle');
+    };
     recognitionRef.current = sr;
-    try { sr.start(); } catch (_) {}
-  }, [lang, onTranscript]);
+    try {
+      sr.start();
+    } catch {
+      recognitionRef.current = null;
+      recognitionModeRef.current = 'none';
+      setVoiceState('idle');
+    }
+  }, [clearRestartTimer, lang, onTranscript, scheduleRestart]);
 
   useEffect(() => {
-    if (enabled) startListening();
-    else stopListening();
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const refreshVoices = () => {
+      voicesRef.current = window.speechSynthesis.getVoices();
+    };
+    refreshVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', refreshVoices);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', refreshVoices);
+  }, []);
+
+  useEffect(() => {
+    if (enabled) {
+      enabledRef.current = true;
+      recognitionModeRef.current = 'continuous';
+      startListening();
+    } else {
+      enabledRef.current = false;
+      stopListening();
+    }
     return () => stopListening();
+  // Keep the recognizer stable while inline transcript callbacks change identity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
 
